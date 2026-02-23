@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Apple CarPlay - HTML5</title>
+    <!-- Opcjonalny manifest PWA do pełnego wsparcia instalacji -->
+    <link rel="manifest" href="manifest.json" crossorigin="use-credentials">
+    <style>
+        /* RESET I BAZOWE STYLE */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-drag: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        ::-webkit-scrollbar {
+            display: none;
+            width: 0px;
+            height: 0px;
+        }
+
+        body, html {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: url('/assets/back.png') no-repeat center center;
+            background-size: cover;
+            display: flex;
+            background-color: #111;
+        }
+
+        /* DOCK (Pasek boczny) */
+        #dock {
+            width: 85px;
+            height: 100%;
+            background-color: rgba(40, 40, 40, 0.4);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 25px 0;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+
+        .dock-time { color: white; font-size: 16px; font-weight: 600; text-align: center; }
+        .dock-apps { display: flex; flex-direction: column; gap: 20px; }
+        .dock-icon { width: 55px; height: 55px; border-radius: 14px; cursor: pointer; background-color: #333; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.1s; }
+        .dock-icon:active { transform: scale(0.9); }
+        .switch-btn { width: 45px; height: 45px; cursor: pointer; border-radius: 8px; }
+
+        /* GŁÓWNY KONTENER EKRANU */
+        #screen-container { flex: 1; position: relative; height: 100%; }
+
+        /* WIDOKI APLIKACJI */
+        .view {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            animation: fadeIn 0.2s ease-out;
+        }
+        .view.active { display: flex; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        /* MENU APLIKACJI */
+        #menu-view { padding: 40px; flex-wrap: wrap; align-content: flex-start; gap: 30px 45px; overflow-y: auto; }
+        .app-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; width: 90px; }
+        .app-item img { width: 80px; height: 80px; border-radius: 20px; margin-bottom: 8px; background-color: #333; box-shadow: 0 5px 15px rgba(0,0,0,0.2); transition: transform 0.1s; }
+        .app-item:active img { transform: scale(0.9); }
+        .app-item span {
+            color: white; font-size: 13px; font-weight: 500;
+            background: rgba(0, 0, 0, 0.45); padding: 4px 10px; border-radius: 6px; 
+            white-space: nowrap; text-align: center;
+        }
+
+        /* DASHBOARD (Teraz Odtwarzane) */
+        #dashboard-view { padding: 20px; gap: 20px; }
+        .dash-left { flex: 1.2; background: #111; border-radius: 24px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+        .dash-right { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        .dash-panel {
+            flex: 1; background: rgba(40, 40, 40, 0.6); backdrop-filter: blur(10px);
+            border-radius: 24px; padding: 20px; color: white;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex; flex-direction: column; justify-content: center;
+            overflow: hidden; position: relative;
+        }
+        .dash-cover-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.2; z-index: 0; filter: blur(10px); }
+
+        #dash-song-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%; z-index: 1; font-size: 20px; margin-bottom: 2px;}
+
+        /* STEROWANIE MUZYKĄ */
+        .player-controls { display: flex; gap: 15px; align-items: center; justify-content: center; margin-top: 15px; z-index: 2; width: 100%; }
+        .ctrl-btn { width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; }
+        .ctrl-btn:active { background: rgba(255,255,255,0.3); }
+        .ctrl-btn svg { width: 20px; height: 20px; }
+        .ctrl-btn.play-pause { width: 50px; height: 50px; background: white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .ctrl-btn.play-pause svg { width: 26px; height: 26px; }
+        .ctrl-btn.play-pause svg path { fill: #000; }
+
+        /* APLIKACJA: TELEFON */
+        #telefon-view { background: #000; align-items: center; justify-content: center; }
+        .phone-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; }
+        #phone-display { color: white; font-size: 36px; min-height: 45px; margin-bottom: 20px; letter-spacing: 2px; text-align: center;}
+
+        .keypad { display: grid; grid-template-columns: repeat(3, 65px); gap: 15px 25px; }
+        .key-btn { width: 65px; height: 65px; background: #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; cursor: pointer; transition: background 0.1s; }
+        .key-btn:active { background: #555; }
+        .key-btn.action { background: rgba(255,255,255,0.1); font-size: 20px;}
+        .key-btn.call { background: #34C759; }
+
+        /* APLIKACJA: MUZYKA */
+        #muzyka-view { background: #000; color: white; flex-direction: column; }
+        .music-header { padding: 20px 30px; font-size: 28px; font-weight: bold; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .upload-btn { background: #FF2D55; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+        .upload-btn:active { background: #E0244B; }
+        .music-list { flex: 1; overflow-y: auto; padding: 0 20px; }
+        .music-item { display: flex; align-items: center; padding: 15px 10px; border-bottom: 1px solid #222; cursor: pointer; }
+        .music-item:active { background: #111; border-radius: 10px;}
+        .music-icon { width: 50px; height: 50px; background: #222; border-radius: 8px; margin-right: 15px; object-fit: cover; }
+        .music-info h4 { font-size: 18px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;}
+        .music-info p { font-size: 14px; color: #aaa; }
+
+        /* APLIKACJA: MAPY */
+        #mapy-view { background: #111; position: relative; }
+
+        /* APLIKACJA: WIADOMOŚCI */
+        #wiadomosci-view { background: #000; color: white; }
+        .chats-list { width: 35%; border-right: 1px solid #333; overflow-y: auto; height: 100%; }
+        .chat-item { padding: 20px; border-bottom: 1px solid #222; cursor: pointer; }
+        .chat-item.active { background: #1c1c1e; }
+        .chat-item h3 { font-size: 18px; }
+        .chat-item p { font-size: 14px; color: #888; margin-top: 5px; }
+        .chat-thread { flex: 1; display: flex; flex-direction: column; padding: 20px; background: #111; height: 100%; overflow-y: auto; }
+        .bubble { max-width: 60%; padding: 12px 18px; border-radius: 20px; margin-bottom: 15px; font-size: 16px; }
+        .bubble.received { background: #333; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .bubble.sent { background: #007AFF; align-self: flex-end; border-bottom-right-radius: 4px; }
+
+        /* USTAWIENIA */
+        #ustawienia-view { background: #000; color: white; flex-direction: column; padding: 30px; }
+        .settings-group { background: #1C1C1E; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+        .settings-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #333; font-size: 18px; }
+        .settings-item:last-child { border-bottom: none; }
+        .toggle { position: relative; width: 50px; height: 30px; background: #39393D; border-radius: 30px; cursor: pointer; transition: 0.3s; }
+        .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 26px; height: 26px; background: white; border-radius: 50%; transition: 0.3s; }
+        .toggle.on { background: #34C759; }
+        .toggle.on::after { left: 22px; }
+
+        /* APLIKACJE Z KOMUNIKATAMI */
+        .message-view { background: #000; color: white; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .message-view h2 { font-weight: 500; font-size: 26px; letter-spacing: 0.5px; }
+    </style>
+</head>
+<body>
+
+    <!-- DOCK -->
+    <div id="dock">
+        <div class="dock-time" id="clock">--:--</div>
+        
+        <div class="dock-apps">
+            <img src="assets/dock/telefon.png" class="dock-icon" onclick="openApp('telefon')" alt="Telefon" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MDUiIGhlaWdodD0iNTA1Ij48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjM2QzZDNkIi8+PC9zdmc+'">
+            <img src="assets/dock/mapy.png" class="dock-icon" onclick="openApp('mapy')" alt="Mapy" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MDUiIGhlaWdodD0iNTA1Ij48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjM2QzZDNkIi8+PC9zdmc+'">
+            <img src="assets/dock/muzyka.png" class="dock-icon" onclick="openApp('muzyka')" alt="Muzyka" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MDUiIGhlaWdodD0iNTA1Ij48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjM2QzZDNkIi8+PC9zdmc+'">
+        </div>
+
+        <img src="assets/switch.png" class="switch-btn" onclick="toggleMenu()" alt="Switch" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MDUiIGhlaWdodD0iNTA1Ij48Y2lyY2xlIGN4PSIyNTIiIGN5PSIyNTIiIHI9IjI1MCIgZmlsbD0iI2ZmZiIvPjwvc3ZnPg=='">
+    </div>
+
+    <!-- EKRANY -->
+    <div id="screen-container">
+        
+        <!-- DASHBOARD (Teraz Odtwarzane) -->
+        <div id="dashboard-view" class="view active">
+            <div class="dash-left">
+                <iframe src="maps.html" style="width: 100%; height: 100%; border: none; pointer-events: none;"></iframe>
+            </div>
+            <div class="dash-right">
+                <div class="dash-panel" style="justify-content:flex-start;">
+                    <h3 style="margin-bottom: 10px;">Powiadomienia</h3>
+                    <p style="color:#ccc; font-size:14px;">Brak nowych powiadomień</p>
+                </div>
+                <div class="dash-panel" style="align-items:center; text-align:center; cursor:pointer;" onclick="openApp('muzyka')">
+                    <img id="dash-cover-bg" class="dash-cover-bg" style="display:none;">
+                    <h4 style="color:#FF2D55; margin-bottom:5px; z-index:1; font-size: 14px;">Teraz odtwarzane</h4>
+                    <img id="dash-cover" style="width: 50px; height: 50px; border-radius: 10px; margin-bottom:8px; display:none; z-index:1; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+                    <h2 id="dash-song-title">Nieznany utwór</h2>
+                    <p style="color:#aaa; z-index:1; font-size: 12px;" id="dash-song-artist">Wybierz z listy</p>
+
+                    <div class="player-controls" onclick="event.stopPropagation()">
+                        <div class="ctrl-btn" onclick="prevSong()"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="#fff"/></svg></div>
+                        <div class="ctrl-btn play-pause" onclick="togglePlay()">
+                            <svg id="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            <svg id="icon-pause" viewBox="0 0 24 24" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                        </div>
+                        <div class="ctrl-btn" onclick="nextSong()"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="#fff"/></svg></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MENU APLIKACJI -->
+        <div id="menu-view" class="view">
+            <div class="app-item" onclick="openApp('telefon')"><img src="assets/menu/telefon.png" onerror="this.style.background='#34C759'"><span>Telefon</span></div>
+            <div class="app-item" onclick="openApp('muzyka')"><img src="assets/menu/muzyka.png" onerror="this.style.background='#FF2D55'"><span>Muzyka</span></div>
+            <div class="app-item" onclick="openApp('mapy')"><img src="assets/menu/mapy.png" onerror="this.style.background='#5AC8FA'"><span>Mapy</span></div>
+            <div class="app-item" onclick="openApp('wiadomosci')"><img src="assets/menu/wiadomosci.png" onerror="this.style.background='#34C759'"><span>Wiadomości</span></div>
+            <div class="app-item" onclick="openApp('dashboard')"><img src="assets/menu/odtwarzane.png" onerror="this.style.background='#FF3B30'"><span>Teraz odtwarzane</span></div>
+            <div class="app-item" onclick="openApp('podcasty')"><img src="assets/menu/podcasty.png" onerror="this.style.background='#AF52DE'"><span>Podcasty</span></div>
+            <div class="app-item" onclick="openApp('ustawienia')"><img src="assets/menu/ustawienia.png" onerror="this.style.background='#8E8E93'"><span>Ustawienia</span></div>
+            <div class="app-item" onclick="openApp('whatsapp')"><img src="assets/menu/whatsapp.png" onerror="this.style.background='#25D366'"><span>WhatsApp</span></div>
+        </div>
+
+        <!-- TELEFON -->
+        <div id="telefon-view" class="view">
+            <div class="phone-wrapper">
+                <div id="phone-display"></div>
+                <div class="keypad">
+                    <div class="key-btn" onclick="addPhoneDigit('1')">1</div>
+                    <div class="key-btn" onclick="addPhoneDigit('2')">2</div>
+                    <div class="key-btn" onclick="addPhoneDigit('3')">3</div>
+                    <div class="key-btn" onclick="addPhoneDigit('4')">4</div>
+                    <div class="key-btn" onclick="addPhoneDigit('5')">5</div>
+                    <div class="key-btn" onclick="addPhoneDigit('6')">6</div>
+                    <div class="key-btn" onclick="addPhoneDigit('7')">7</div>
+                    <div class="key-btn" onclick="addPhoneDigit('8')">8</div>
+                    <div class="key-btn" onclick="addPhoneDigit('9')">9</div>
+                    <div class="key-btn" onclick="addPhoneDigit('*')">*</div>
+                    <div class="key-btn" onclick="addPhoneDigit('0')">0</div>
+                    <div class="key-btn" onclick="addPhoneDigit('#')">#</div>
+                    <div class="key-btn action" style="visibility: hidden;"></div>
+                    <div class="key-btn call">
+                        <svg viewBox="0 0 24 24" width="30" height="30"><path fill="#fff" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                    </div>
+                    <div class="key-btn action" onclick="deletePhoneDigit()">⌫</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MUZYKA -->
+        <div id="muzyka-view" class="view">
+            <div class="music-header">
+                Biblioteka MP3
+                <button class="upload-btn" onclick="document.getElementById('file-input').click()">+ Dodaj</button>
+                <input type="file" id="file-input" accept="audio/mpeg" multiple style="display:none;" onchange="handleMusicUpload(event)">
+            </div>
+            <div class="music-list" id="music-list-container">
+                <p style="padding: 20px; color: #888; text-align:center;">Brak utworów. Kliknij "+ Dodaj", aby wgrać pliki z urządzenia.</p>
+            </div>
+        </div>
+
+        <!-- MAPY -->
+        <div id="mapy-view" class="view">
+            <iframe src="maps.html" style="width: 100%; height: 100%; border: none;"></iframe>
+        </div>
+
+        <!-- WIADOMOŚCI -->
+        <div id="wiadomosci-view" class="view">
+            <div class="chats-list">
+                <div class="chat-item active" onclick="loadChat(1, this)"><h3>+48 111 222 333</h3><p>O której będziesz?</p></div>
+                <div class="chat-item" onclick="loadChat(2, this)"><h3>+48 999 888 777</h3><p>Kup mleko i chleb.</p></div>
+            </div>
+            <div class="chat-thread" id="chat-thread">
+                <div class="bubble received">Cześć! O której będziesz w domu?</div>
+                <div class="bubble sent">Hej, za około 20 minut. Korki są.</div>
+                <div class="bubble received">Okej, czekam na Ciebie z obiadem!</div>
+            </div>
+        </div>
+
+        <!-- PODCASTY -->
+        <div id="podcasty-view" class="view message-view">
+            <h2>Zaktualizuje do oficjalnej wersji</h2>
+        </div>
+
+        <!-- WHATSAPP -->
+        <div id="whatsapp-view" class="view message-view">
+            <h2>Połącz się z internetem</h2>
+        </div>
+
+        <!-- USTAWIENIA -->
+        <div id="ustawienia-view" class="view">
+            <h2 style="margin-bottom: 20px;">Ustawienia</h2>
+            <div class="settings-group">
+                <div class="settings-item"><span>Tryb ciemny map</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+                <div class="settings-item"><span>Dźwięki powiadomień</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+                <div class="settings-item"><span>Nie przeszkadzać podczas jazdy</span><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
+            </div>
+            <div class="settings-group">
+                <div class="settings-item"><span>Tapeta</span><span style="color:#aaa; font-size:16px;">Wybierz ></span></div>
+                <div class="settings-item"><span>Połączony telefon</span><span style="color:#aaa; font-size:16px;">iPhone (User)</span></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Prawdziwy odtwarzacz audio w tle -->
+    <audio id="audio-player"></audio>
+
+    <script>
+        // ---- ZEGAR ----
+        function updateClock() {
+            const now = new Date();
+            let h = now.getHours(); let m = now.getMinutes();
+            if (h < 10) h = '0' + h; if (m < 10) m = '0' + m;
+            document.getElementById('clock').innerText = h + ':' + m;
+        }
+        setInterval(updateClock, 1000); updateClock();
+
+        // ---- NAWIGACJA ----
+        let currentView = 'dashboard';
+        function openApp(appId) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(appId + '-view').classList.add('active');
+            currentView = appId;
+        }
+        function toggleMenu() { currentView === 'menu' ? openApp('dashboard') : openApp('menu'); }
+
+        // ---- BAZA DANYCH MUZYKI & ZARZĄDZANIE ODTWARZANIEM ----
+        let db;
+        const audioPlayer = document.getElementById('audio-player');
+        let currentTrackList = [];
+        let currentTrackIndex = -1;
+        let isPlaying = false;
+
+        function initDB() {
+            const req = indexedDB.open("CarPlayMusic", 1);
+            req.onupgradeneeded = e => {
+                const tempDb = e.target.result;
+                tempDb.createObjectStore("tracks", { keyPath: "name" });
+            };
+            req.onsuccess = e => {
+                db = e.target.result;
+                loadMusicList();
+            };
+        }
+
+        function handleMusicUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            const tx = db.transaction("tracks", "readwrite");
+            const store = tx.objectStore("tracks");
+            for (let file of files) {
+                if (file.type === "audio/mpeg" || file.name.endsWith('.mp3')) {
+                    store.put({ name: file.name, file: file });
+                }
+            }
+            tx.oncomplete = () => loadMusicList();
+        }
+
+        async function extractCoverFromMP3(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const view = new Uint8Array(e.target.result);
+                    let start = -1;
+                    for(let i=0; i < view.length - 2; i++) {
+                        if(view[i] === 0xFF && view[i+1] === 0xD8 && view[i+2] === 0xFF) { start = i; break; }
+                    }
+                    if (start !== -1) {
+                        let end = -1;
+                        for(let i = start; i < view.length - 1; i++) {
+                            if(view[i] === 0xFF && view[i+1] === 0xD9) { end = i + 2; break; }
+                        }
+                        const imgData = end !== -1 ? view.slice(start, end) : view.slice(start);
+                        const blob = new Blob([imgData], {type: 'image/jpeg'});
+                        return resolve(URL.createObjectURL(blob));
+                    }
+                    
+                    let startPng = -1;
+                    for(let i=0; i < view.length - 4; i++) {
+                        if(view[i] === 0x89 && view[i+1] === 0x50 && view[i+2] === 0x4E && view[i+3] === 0x47) { startPng = i; break; }
+                    }
+                    if (startPng !== -1) {
+                        let endPng = -1;
+                        for(let i = startPng; i < view.length - 8; i++) {
+                            if(view[i] === 0x49 && view[i+1] === 0x45 && view[i+2] === 0x4E && view[i+3] === 0x44) { endPng = i + 8; break; }
+                        }
+                        const imgData = endPng !== -1 ? view.slice(startPng, endPng) : view.slice(startPng);
+                        const blob = new Blob([imgData], {type: 'image/png'});
+                        return resolve(URL.createObjectURL(blob));
+                    }
+                    resolve(null);
+                };
+                reader.readAsArrayBuffer(file.slice(0, 512 * 1024)); 
+            });
+        }
+
+        async function loadMusicList() {
+            const tx = db.transaction("tracks", "readonly");
+            const store = tx.objectStore("tracks");
+            const req = store.getAll();
+            req.onsuccess = async () => {
+                const tracks = req.result;
+                const container = document.getElementById('music-list-container');
+                if (tracks.length === 0) return;
+                
+                tracks.sort(() => 0.5 - Math.random());
+                currentTrackList = tracks;
+                container.innerHTML = '';
+                
+                for (let i = 0; i < tracks.length; i++) {
+                    const track = tracks[i];
+                    const coverUrl = await extractCoverFromMP3(track.file);
+                    const item = document.createElement('div');
+                    item.className = 'music-item';
+                    const iconHTML = coverUrl 
+                        ? `<img src="${coverUrl}" class="music-icon">` 
+                        : `<div class="music-icon" style="background: #FF2D55;"></div>`;
+
+                    item.innerHTML = `${iconHTML}<div class="music-info"><h4>${track.name.replace('.mp3', '')}</h4><p>Zapisane lokalnie</p></div>`;
+                    item.onclick = () => playSongByIndex(i);
+                    container.appendChild(item);
+                }
+            };
+        }
+
+        function playSongByIndex(index) {
+            if (!currentTrackList || currentTrackList.length === 0) return;
+            if (index < 0) index = currentTrackList.length - 1; 
+            if (index >= currentTrackList.length) index = 0;    
+            
+            currentTrackIndex = index;
+            const track = currentTrackList[index];
+            
+            extractCoverFromMP3(track.file).then(coverUrl => {
+                audioPlayer.src = URL.createObjectURL(track.file);
+                audioPlayer.play();
+                isPlaying = true;
+                updatePlayerUI(track, coverUrl);
+            });
+        }
+
+        function updatePlayerUI(track, coverUrl) {
+            document.getElementById('dash-song-title').innerText = track.name.replace('.mp3', '');
+            document.getElementById('dash-song-artist').innerText = "Własny plik";
+            
+            if(coverUrl) {
+                document.getElementById('dash-cover').style.display = 'block';
+                document.getElementById('dash-cover-bg').style.display = 'block';
+                document.getElementById('dash-cover').src = coverUrl;
+                document.getElementById('dash-cover-bg').src = coverUrl;
+            } else {
+                document.getElementById('dash-cover').style.display = 'none';
+                document.getElementById('dash-cover-bg').style.display = 'none';
+            }
+            updatePlayPauseIcon();
+        }
+
+        function togglePlay() {
+            if (currentTrackIndex === -1) {
+                if(currentTrackList.length > 0) playSongByIndex(0);
+                return;
+            }
+            if(isPlaying) { audioPlayer.pause(); isPlaying = false; } 
+            else { audioPlayer.play(); isPlaying = true; }
+            updatePlayPauseIcon();
+        }
+
+        function nextSong() { playSongByIndex(currentTrackIndex + 1); }
+        function prevSong() { playSongByIndex(currentTrackIndex - 1); }
+
+        function updatePlayPauseIcon() {
+            if(isPlaying) {
+                document.getElementById('icon-play').style.display = 'none';
+                document.getElementById('icon-pause').style.display = 'block';
+            } else {
+                document.getElementById('icon-play').style.display = 'block';
+                document.getElementById('icon-pause').style.display = 'none';
+            }
+        }
+        
+        audioPlayer.onended = () => nextSong();
+
+        // ---- TELEFON ----
+        let phoneNumber = "";
+        const phoneDisplay = document.getElementById('phone-display');
+        function addPhoneDigit(digit) { phoneNumber += digit; phoneDisplay.innerText = phoneNumber; }
+        function deletePhoneDigit() { phoneNumber = phoneNumber.slice(0, -1); phoneDisplay.innerText = phoneNumber; }
+
+        // ---- WIADOMOŚCI ----
+        function loadChat(chatId, element) {
+            const thread = document.getElementById('chat-thread');
+            document.querySelectorAll('.chat-item').forEach(item => item.classList.remove('active'));
+            element.classList.add('active');
+
+            if(chatId === 1) {
+                thread.innerHTML = `<div class="bubble received">Cześć! O której będziesz w domu?</div><div class="bubble sent">Hej, za około 20 minut. Korki są.</div><div class="bubble received">Okej, czekam na Ciebie z obiadem!</div>`;
+            } else {
+                thread.innerHTML = `<div class="bubble received">Kup mleko i chleb jak będziesz wracać.</div><div class="bubble sent">Jasne, zajadę do sklepu. Coś jeszcze?</div><div class="bubble received">Nie, to wszystko. Dzięki!</div>`;
+            }
+        }
+
+        // Start aplikacji po załadowaniu
+        window.onload = () => {
+            initDB();
+            openApp('dashboard'); 
+        };
+
+        // ---- REJESTRACJA SERVICE WORKERA (PWA) ----
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('Service Worker został pomyślnie zarejestrowany. Zasięg:', registration.scope);
+                }).catch(err => {
+                    console.error('Rejestracja Service Workera nie powiodła się:', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
